@@ -1,0 +1,137 @@
+import re
+
+is_numeric = re.compile(r'^[-+]?[\d]+$')
+bad_expr = re.compile(r'[*]{2,}|[/]{2,}|[\^]{2,}|\+\-\+|\-\+\-')
+operators = {'(': 0, ')': 0, '+': 1, '-': 1, '*': 2, '/': 2, '^': 3}
+variables = {}
+rpn_queue = []
+
+
+def parentheses_ok(in_expr):
+    p_count = 0
+    for char in in_expr:
+        if char == '(':
+            p_count += 1
+        elif char == ')':
+            p_count -= 1
+        if p_count < 0:  # A ')' must never precede a '('
+            return False
+    if p_count != 0:  # parentheses must be paired
+        return False
+    return True
+
+
+def validate_string(in_expr):
+    x = in_expr.replace(' ', '')
+    if bad_expr.search(x) or not parentheses_ok(x):
+        return False
+    return True
+
+
+def normalize_string(in_expr):
+    x = in_expr.replace(' ', '')
+    while re.search(r'\+{2,}|\-{2,}|\+\-|\-\+', x):
+        x = x.replace('--', '+').replace('++', '+').replace('+-', '-').replace('-+', '-')
+    if x[0] == '-':  # Handle the case of a leading negative sign
+        x = '0' + x
+    x = re.sub(r'([-+*/^()=])', ' \g<1> ', x).replace('  ', ' ').strip()
+    return x
+
+
+def substitute_variables(in_expression, out_expression):
+    for seq, elem in enumerate(in_expression):
+        if elem in operators or is_numeric.fullmatch(elem):
+            pass
+        elif elem.isalpha():
+            if elem in variables:
+                out_expression[seq] = str(variables[elem])
+            else:
+                print('Unknown variable')
+                return False
+        else:
+            print('Invalid assignment', elem)
+            return False
+    return True
+
+
+def convert_to_postfix(in_expr, out_expr):
+    precedence = {'(': 0, ')': 0, '+': 1, '-': 1, '*': 2, '/': 2, '^': 3 }
+    out_expr.clear()
+    o_stack = []
+    for item in in_expr:
+        if is_numeric.fullmatch(item):
+            out_expr.append(item)
+        elif item == '(':
+            o_stack.append(item)
+        elif item == ')':
+            top_operator = o_stack.pop()
+            while top_operator != '(':
+                out_expr.append(top_operator)
+                top_operator = o_stack.pop()
+        else:
+            while len(o_stack) > 0 and precedence[o_stack[-1]] >= precedence[item]:
+                out_expr.append(o_stack.pop())
+            o_stack.append(item)
+            
+    while len(o_stack) > 0:
+        out_expr.append(o_stack.pop())
+    return True
+
+
+def process_postfix(in_queue):
+    op_equiv = {'^': '**', '*': '*', '/': '//', '+': '+', '-': '-'}
+    answer = []
+    for value in in_queue:
+        if value in operators:
+            v_right = answer.pop()
+            v_left = answer.pop()
+            op = op_equiv[value]
+            answer.append(eval(f'{v_left} {op} {v_right}'))
+        else:
+            answer.append(int(value))
+    return answer[0]
+
+
+def process_assignment(expr):
+    if expr.count('=') > 1:  # An expression may contain only one '=' sign
+        print('Invalid assignment')
+        return
+    variable, r_equation = [x.strip() for x in expr.split('=')]
+    if not variable.isalpha():
+        print('Invalid identifier')
+    right_side = normalize_string(r_equation).split(' ')
+    sub_right_side = right_side.copy()  # create a template
+    if substitute_variables(right_side, sub_right_side):  # substitute variables if needed
+        if convert_to_postfix(sub_right_side, rpn_queue):
+            variables[variable] = process_postfix(rpn_queue)
+        else:
+            print('Invalid assignment')
+    else:
+        print('Invalid assignment')
+        
+
+while True:
+    expression = input('Enter algebraic expression: ').strip()
+    if not expression:
+        pass
+    elif expression in ['/e', '/exit']:
+        print('Bye!')
+        break
+    elif expression == '/help':
+        print('The program calculates the sum of numbers')
+    elif expression[0] == '/':
+        print('Unknown command')
+    elif not validate_string(expression):
+        print('Invalid expression')
+    # Check for an assignment, i.e. a = 800
+    elif '=' in expression:
+        process_assignment(expression)
+    else:
+        equation = normalize_string(expression).split(' ')
+        substitute_equation = equation.copy()
+        if not substitute_variables(equation, substitute_equation):
+            print('Invalid expression')
+        elif convert_to_postfix(substitute_equation, rpn_queue):
+            print(process_postfix(rpn_queue))
+        else:
+            print('Invalid expression')
